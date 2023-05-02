@@ -1,12 +1,12 @@
 import os
 import logging
 from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
-from langchain.text_splitter import CharacterTextSplitter
+from langchain.vectorstores import DeepLake
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
 from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
-from langchain.document_loaders import GoogleDriveLoader
+from langchain.document_loaders import GoogleDriveLoader, PyPDFLoader
 from langchain.memory import ConversationBufferMemory
 
 # Set up logging
@@ -16,36 +16,32 @@ logging.basicConfig(
 )
 
 # Set up OpenAI API key
-os.environ["OPENAI_API_KEY"] = "sk-xxx"
+os.environ["OPENAI_API_KEY"] = ""
+# Set up ActiveLoop (DeepLake) API key
+os.environ["DEEPLAKE_API_KEY"] = "xxx"
 
-# Set up Google Drive Loader
-loader = GoogleDriveLoader(
-    credentials_path="credentials.json",
-    token_path="token.json",
-    folder_id="1Y5XUpi5egCHX4Rg5pSAqRB0v8LoTm-YP",  # ENST 100
-    recursive=False  # Configure whether to recursively fetch files from subfolders
-)
+# Set up PyPDF Loader
+loader = PyPDFLoader("classes/CLAS-151/syllabus.pdf")
 
 # Load documents
 logging.info("Loading documents...")
-docs = loader.load()
+documents = loader.load_and_split()
 
 # Split documents into chunks
 logging.info("Splitting documents...")
-text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-documents = text_splitter.split_documents(docs)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+texts = text_splitter.split_documents(documents)
 
 # Generate embeddings and create vectorstore
 logging.info("Generating embeddings...")
 embeddings = OpenAIEmbeddings()
-vectorstore = Chroma.from_documents(documents, embeddings)
+db = DeepLake(dataset_path="deeplake", embedding_function=embeddings)
+db.add_documents(texts)
 
 # Create retrieval chain
 logging.info("Creating retrieval chain...")
-# model = OpenAI()
 model = ChatOpenAI(model='gpt-3.5-turbo')
-retriever = vectorstore.as_retriever()
-# memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+retriever = db.as_retriever()
 qa = ConversationalRetrievalChain.from_llm(model, retriever)
 
 # Start chat loop
